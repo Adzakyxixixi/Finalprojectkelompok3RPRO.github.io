@@ -1,0 +1,167 @@
+
+---
+title: "Aplikasi SIGMA: Klasifikasi Sosial & Rekomendasi Bantuan"
+output: 
+  html_document:
+    runtime: shiny
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+
+# Referensi kuantil penghasilan untuk desil
+desil_ref <- quantile(c(100000, 1000000, 2500000, 5000000, 10000000), probs = seq(0, 1, 0.25))
+```
+
+```{r ui_server, echo=FALSE}
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body {
+        background-color: #ffe6f0;
+        font-family: 'Arial', cursive, sans-serif;
+      }
+      .title-panel {
+        background-color: #ffccdd;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+        background-image: url('https://cdn-icons-png.flaticon.com/512/3135/3135755.png');
+        background-repeat: no-repeat;
+        background-position: right;
+        background-size: 80px;
+      }
+      .table-output {
+        background-color: white;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 2px 2px 8px #d4a5a5;
+      }
+      .start-button, .exit-button {
+        font-size: 18px;
+        background-color: #ff6699;
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 12px;
+        box-shadow: 2px 2px 6px #d48aa5;
+        margin-top: 20px;
+      }
+      .home-panel, .closing-panel {
+        text-align: center;
+        margin-top: 100px;
+        animation: fadeIn 1.2s ease-in;
+      }
+      @keyframes fadeIn {
+        from {opacity: 0;}
+        to {opacity: 1;}
+      }
+    "))
+  ),
+  uiOutput("main_ui")
+)
+
+server <- function(input, output, session) {
+  halaman <- reactiveVal("home")
+  
+  observeEvent(input$mulai_btn, { halaman("form") })
+  observeEvent(input$keluar_btn, { halaman("closing") })
+  observeEvent(input$ulang_btn, { halaman("home") })
+  
+  output$main_ui <- renderUI({
+    switch(halaman(),
+           "home" = fluidPage(
+             div(class = "home-panel",
+                 h1("🌸 Selamat Datang di SIGMA! 🌸"),
+                 tags$h3("Sistem Informasi Golongan Masyarakat"),
+                 tags$img(src = "https://cdn-icons-png.flaticon.com/512/3135/3135755.png", height = "120px"),
+                 br(), br(),
+                 actionButton("mulai_btn", "Mulai Sekarang", class = "start-button")
+             )
+           ),
+           "form" = fluidPage(
+             div(class = "title-panel",
+                 h2("🌸Klasifikasi Sosial & Rekomendasi Bantuan Sosial🌸")
+             ),
+             sidebarLayout(
+               sidebarPanel(
+                 numericInput("penghasilan", "1. Rata-Rata Penghasilan Bulanan (Rp)", value = 1000000),
+                 numericInput("tanggungan", "2. Jumlah Tanggungan", value = 2),
+                 selectInput("tinggal", "3. Dimana Anda Tinggal?", 
+                             choices = c("Rumah Pribadi", "Kontrakan", "Rumah Keluarga")),
+                 conditionalPanel(
+                   condition = "input.tinggal == 'Rumah Pribadi'",
+                   numericInput("luas_rumah", "Berapa Luas Rumah Anda? (m2)", value = 36)
+                 ),
+                 numericInput("listrik", "4. Daya Listrik (Watt)", value = 900),
+                 numericInput("air", "5. Tagihan Air per Bulan (Rp)", value = 50000),
+                 selectInput("wni", "6. Apakah Anda WNI?", choices = c("Ya", "Tidak")),
+                 selectInput("pns", "7. Apakah Anda PNS?", choices = c("Ya", "Tidak")),
+                 numericInput("kendaraan", "8. Jumlah Kendaraan (Motor/Mobil)", value = 1),
+                 numericInput("hutang", "9. Total Hutang (Rp)", value = 0),
+                 numericInput("njop", "10. NJOP (Rp)", value = 50000000),
+                 actionButton("proses", "🔍 Proses Klasifikasi")
+               ),
+               mainPanel(
+                 h4("Hasil Analisis:"),
+                 div(class = "table-output", tableOutput("hasil_tabel")),
+                 br(),
+                 actionButton("keluar_btn", "Selesai & Keluar", class = "exit-button")
+               )
+             )
+           ),
+           "closing" = fluidPage(
+             div(class = "closing-panel",
+                 h1("Terima Kasih Sudah Menggunakan Aplikasi Ini"),
+                 tags$h3("Semoga harimu penuh berkah dan bantuan yang tepat sasaran"),
+                 tags$img(src = "https://cdn-icons-png.flaticon.com/512/4385/4385141.png", height = "120px"),
+                 br(),
+                 actionButton("ulang_btn", "Kembali ke Awal", class = "start-button")
+             )
+           )
+    )
+  })
+  
+  observeEvent(input$proses, {
+    penghasilan <- input$penghasilan
+    tanggungan <- input$tanggungan
+    tinggal <- input$tinggal
+    kendaraan <- input$kendaraan
+    perkapita <- penghasilan / tanggungan
+    
+    desil_ekonomi <- findInterval(perkapita, desil_ref, rightmost.closed = TRUE)
+    
+    if (desil_ekonomi < 2) {
+      bantuan <- "PBI-JKN, PKH, dan KIP-K"
+    } else if (desil_ekonomi < 3) {
+      bantuan <- "BLT dan KIP-K"
+    } else if (desil_ekonomi < 4) {
+      bantuan <- "BLT saja"
+    } else {
+      bantuan <- "Tidak termasuk prioritas"
+    }
+    
+    kelas_sosial <- if (perkapita < 700000 || tinggal == "Kontrakan") {
+      "Kelas Bawah"
+    } else if (perkapita < 2000000) {
+      "Kelas Menengah"
+    } else {
+      "Kelas Atas"
+    }
+    
+    perkapita_format <- formatC(perkapita, format = "f", big.mark = ",", digits = 0)
+    
+    hasil <- data.frame(
+      Kategori = c("Kelas Sosial", "Pendapatan per Kapita", "Desil Ke", "Rekomendasi Bantuan"),
+      Hasil = c(kelas_sosial, paste0("Rp ", perkapita_format), desil_ekonomi, bantuan)
+    )
+    
+    output$hasil_tabel <- renderTable({
+      hasil
+    }, striped = TRUE, hover = TRUE, spacing = "m")
+  })
+}
+
+shinyApp(ui = ui, server = server)
